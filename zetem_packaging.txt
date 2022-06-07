@@ -1,0 +1,2874 @@
+REPORT zetem_packaging.
+*&---------------------------------------------------------------------*
+*&      TABLES DECLARATION
+*&---------------------------------------------------------------------*
+TABLES: mara, makt,
+        zcrhd, afpo, afru,
+        zpack_mat,
+        trugt,
+        t421t,
+        t423t,
+        m_premk, pa0001,
+        zshift_group,
+        zconf_other,
+        zscrap_reason_b,
+        zbg_print_data,
+        tline,
+        vekp .
+
+INCLUDE: <icon>.
+CONSTANTS : icon_error(4) VALUE '@0A@',
+            icon_warn(4)  VALUE '@09@',
+            icon_ok(4)    VALUE '@08@'.
+*&---------------------------------------------------------------------*
+*&      TYPE-POOLS DECLARATION
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      INCLUDE DECLARATION
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      DATA DECLARATION
+*&---------------------------------------------------------------------*
+DATA:
+  new_qty_kg          TYPE  menge_d,
+  new_qty_pc          TYPE  menge_d,
+  i_aufnr             TYPE  aufnr,
+  i_werks             TYPE werks_d, "spin off
+  i_arbpl             TYPE  arbpl,
+  i_budat             TYPE  budat,
+  i_exidv             TYPE  exidv,
+  i_gross_weight      TYPE  brgew_vekp,
+  i_net_weight        TYPE  brgew_vekp,
+  i_pak_material      TYPE  matnr,
+  maktx(40),
+***
+  i_pcs_ok            TYPE  zz_pc,
+  i_add_pcs_ok        TYPE zpc,
+  i_add_pcs_ok_mf     TYPE zpc,
+  i_add_pcs_ok_col    TYPE zpc,
+  i_pcs_mf_scrap      TYPE  zpc,
+  i_pcs_col_scrap     TYPE  zpc,
+  i_reason_scrap      TYPE  co_agrnd,
+  i_mf_scrap_reason   TYPE co_agrnd,
+  i_scrap_reason      TYPE co_agrnd,
+  i_scrap_pieces      TYPE zpc,
+  i_start_date        TYPE  aldate,
+  i_start_time        TYPE  altime,
+  i_end_date          TYPE  aldate,
+  i_end_time          TYPE  altime,
+  i_breaks            TYPE  iserh,
+  i_wagon             TYPE  zconf_wagon_no,
+  i_shift             TYPE  lohngrp,
+  i_anzma             TYPE  anzms,
+  i_pernr             TYPE  pernr_d,
+  "Personnel numbers 4 more "@dt20171016<<
+  i_name              TYPE pad_vorna, "@dt20171016 name
+  i_surname           TYPE pad_nachn, "surname
+  i_pernr2            TYPE  pernr_d,
+  i_name2             TYPE pad_vorna, "@dt20171016 name
+  i_surname2          TYPE pad_nachn, "surname
+  i_pernr3            TYPE  pernr_d,
+  i_name3             TYPE pad_vorna, "@dt20171016 name
+  i_surname3          TYPE pad_nachn, "surname
+  i_pernr4            TYPE  pernr_d,
+  i_name4             TYPE pad_vorna, "@dt20171016 name
+  i_surname4          TYPE pad_nachn, "surname
+  i_pernr5            TYPE  pernr_d,
+  i_name5             TYPE pad_vorna, "@dt20171016 name
+  i_surname5          TYPE pad_nachn, "surname
+  "Personnel numbers 4 more "@dt20171016 >>>
+  i_zper2             TYPE  pernr_d,
+  i_zperqm            TYPE  pernr_d,
+
+  i_accepted_dif      TYPE  menge_d,
+  i_accepted_prod_dif TYPE char2,
+***
+  i_shiftgroup        TYPE  char2,
+  i_zshift_g          TYPE zshift_g,
+  i_zshift_g_qc       TYPE zshift_g,
+  prod_level          TYPE  zprod_level,
+  start_time          LIKE sy-uzeit,
+  i_zcard             TYPE zcard, "+DT201302007 card no
+  i_un(1)             TYPE c,     "+DT20130312 upd UN_STOCK
+  i_bmwnum            TYPE c, "@DT20170330 BMW numbering
+*Production Order    "@SE20190919 >>>
+  i_targetkg          TYPE menge_d,
+  i_targetpc          TYPE zz_pc,
+* SO Varians         "@SE20190919
+  i_minkg_so          TYPE menge_d,
+  i_minpc_so          TYPE zz_pc,
+  i_maxkg_so          TYPE menge_d,
+  i_maxpc_so          TYPE zz_pc,
+* Material Varians   "@SE20190919
+  i_minkg_g           TYPE menge_d,
+  i_minpc_g           TYPE zz_pc,
+  i_maxkg_g           TYPE menge_d,
+  i_maxpc_g           TYPE zz_pc,
+* Pack Descriptions  "@SE20191108
+  type_o              TYPE zz_pack_type,
+  pack_des_o          TYPE zzpack_descr,
+  type_i              TYPE zz_pack_type,
+  pack_des_i          TYPE zzpack_descr,
+  i_tdline            TYPE tdline,
+  i_tdline_1          TYPE tdline,
+  i_tdline_2          TYPE tdline,
+  i_tdline_3          TYPE tdline,
+  i_tdline_4          TYPE tdline,
+  i_tdline_5          TYPE tdline,
+  i_tdline_6          TYPE tdline,
+  i_tdline_7          TYPE tdline,
+  i_tdline_8          TYPE tdline,
+  i_tdline_9          TYPE tdline,
+  i_tdline_10         TYPE tdline.
+***
+DATA: wa_lgort LIKE afpo-lgort,    "@se20191114
+      wa_batch LIKE afpo-charg,
+      wa_pcs   TYPE zpc_num.
+***
+DATA: text1(50),
+      text2(50),
+      text3(50),
+      text4(50),
+      text5(50),
+      text      TYPE char255,
+      un1       TYPE c, "Flag for Update UN_stock1
+      un2       TYPE c. "Flag for Update UN_stock2
+DATA: first_time VALUE 'X'.
+
+DATA: wa_scrap     LIKE zaddtr_scrap, "Work area for Scrap file
+      tab_scrap    LIKE zaddtr_scrap OCCURS 0,
+      mf_tab_scrap LIKE zaddtr_scrap OCCURS 0.
+
+DATA: search_itab LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+DATA: timetickets   LIKE bapi_pp_timeticket OCCURS 0 WITH HEADER LINE,
+      detail_return LIKE bapi_coru_return OCCURS 0 WITH HEADER LINE.
+
+DATA:   prod_matnr          LIKE  mseg-matnr,
+        prod_descr          LIKE  makt-maktx,
+        prod_colour_so(10),
+        prod_length         TYPE  zlength,
+        wpp_prod            LIKE  mseg-menge,
+        prod_pc             TYPE co_psmng,
+        prod_pc_conf        TYPE  co_psmng,
+        diff                TYPE   co_psmng,
+        alloy               TYPE  zalloy1,
+        temper              TYPE  ztemper,
+        purch_order_no      LIKE vbkd-bstkd,
+        customer_pr_num(18),
+        mdv01               TYPE mdv01,
+        kdauf               TYPE  kdauf,
+        kdpos               TYPE  kdpos,
+        customer_name       TYPE  name1_gp,
+       kdauf_display       TYPE  kdauf,    "@se20191121 new screen field
+       so_category(20)     TYPE c.         "@se20191121 new screen field
+
+DATA lv_time LIKE sy-uzeit.
+
+DATA: ok_code        TYPE sy-ucomm.
+DATA: wa_unstock  LIKE zpost_un_stock OCCURS 0 WITH HEADER LINE.
+
+DATA: wa_exidv       TYPE  exidv ,       "@se20200228
+      wa_exidv_sm    TYPE  exidv ,     "@se20200228
+      wa_exidv_sc    TYPE  exidv ,     "@se20200228
+      wa_scrap_exidv TYPE exidv.    "@se20200228
+
+"@DT20160516 PACKAGE GUIDE FIELDS
+DATA statusicon(4) TYPE c.
+DATA: wa_packg    LIKE zpackg,
+      zprnum      LIKE mara-zprnum,
+      packtxt(25) TYPE c.
+
+*include zetem_hu_forms.
+DATA BEGIN OF i_stock OCCURS 0.
+DATA : FLAG(4)  TYPE c,
+       MATNR    LIKE zorder_stock-matnr,
+       MAKTX    LIKE zorder_stock-maktx,
+       BDMNG    LIKE zorder_stock-bdmng,
+       CMBWBEST LIKE zorder_stock-cmbwbest,
+       MEINS    LIKE zorder_stock-meins,
+       REQ_PC   LIKE zorder_stock-req_pc,
+       ZZ_PC    LIKE zorder_stock-zz_pc,
+       KDAUF    LIKE zorder_stock-kdauf,
+       KDPOS    LIKE zorder_stock-kdpos,
+       WERKS    LIKE zorder_stock-werks,
+       LGORT    LIKE zorder_stock-lgort.
+DATA END OF i_stock.
+
+DATA: stock_itab  LIKE TABLE OF i_stock WITH HEADER LINE,
+*      wa_st_tab  TYPE zorder_stock,
+      wa_st_tab  LIKE i_stock.
+
+DATA: i_ord_stock TYPE STANDARD TABLE OF zorder_stock WITH HEADER LINE,
+      scrap_tb   TYPE STANDARD TABLE OF zcomp_scrap WITH HEADER LINE.
+
+DATA: dsp_stock_flag TYPE flag.
+
+
+DATA: number_po TYPE afko-stlbez.
+
+
+
+INITIALIZATION .
+
+  CALL FUNCTION 'Z_GET_PLANT_MASTER'
+* EXPORTING
+*   UNAME         = SY-UNAME
+    IMPORTING
+      e_plant = i_werks.
+
+
+  CALL FUNCTION 'ZCONF_USER_PARAMETERS'
+    IMPORTING
+      arbpl    = i_arbpl
+      prod_var = i_accepted_prod_dif.
+
+*&---------------------------------------------------------------------*
+*&      START-OF-SELECTION
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  statusicon = '@08@'.
+  CLEAR i_bmwnum. "Clear here and not in every confirmation.
+  IF sy-uname = 'MICROCUTBG'.
+    i_bmwnum = 'X'.
+  ENDIF.
+  CALL SCREEN 100.
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+
+  CLEAR ok_code.
+  SET PF-STATUS 'ZETEM_ORDER_CONF'.
+  SET TITLEBAR 'ZETEM_ORDER_CONF'.
+
+ENDMODULE.                 " STATUS_0100  OUTPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+MODULE exiting .
+
+  CASE ok_code.
+    WHEN 'EXIT' OR 'CANCEL'.
+      LEAVE PROGRAM.
+  ENDCASE .
+
+ENDMODULE .                    "EXITING
+
+*---------------------------------------------------------------------*
+*       MODULE USER_COMMAND_0100 INPUT                                *
+*---------------------------------------------------------------------*
+*       ........                                                      *
+*---------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+
+
+  CASE ok_code.
+    WHEN 'REFR_START'.
+      i_start_date = sy-datum.
+      i_start_time = sy-uzeit.
+*change and end date
+      i_end_date = sy-datum.
+      i_end_time = sy-uzeit.
+      GET TIME FIELD lv_time.
+      "@dt20150224 conf.date on 3rd shift
+      CALL FUNCTION 'ZBG_CONF_DATE'
+        CHANGING
+          i_date = i_start_date.
+      CALL FUNCTION 'ZBG_CONF_DATE'
+        CHANGING
+          i_date = i_end_date.
+
+    WHEN 'REFR_END'.
+      i_end_date = sy-datum.
+      i_end_time = sy-uzeit.
+      GET TIME FIELD lv_time.
+      "@dt20150224 conf.date on 3rd shift
+      CALL FUNCTION 'ZBG_CONF_DATE'
+        CHANGING
+          i_date = i_end_date.
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      LEAVE TO SCREEN 0.
+    WHEN 'ENTER'.
+    WHEN 'GENERATE'.
+      IF i_budat IS INITIAL.
+        MESSAGE e398(00) WITH text-013.
+      ENDIF.
+      CALL FUNCTION 'ZETEM_HU_CODES_CREATE'
+        EXPORTING
+          i_datum  = i_budat
+          i_bmwnum = i_bmwnum
+        IMPORTING
+          e_exidv  = i_exidv.
+    WHEN 'CONF'.
+      "@se20200525 >>>>
+      IF dsp_stock_flag IS INITIAL.
+        CHECK i_aufnr IS NOT INITIAL.
+        PERFORM dsp_tabstock.
+      ENDIF.
+      "<<<<
+      PERFORM confirm_order.
+    WHEN 'FAILED'.
+      PERFORM failure_process.
+*    WHEN 'SAVE'.
+    WHEN 'VERS'.
+      PERFORM create_tb_orders.
+    WHEN 'PRINT'.
+      PERFORM print.
+    WHEN 'PRINT_NLOG'.
+      PERFORM print_nologo.
+*    when 'PRNT_SCRAP'.
+*      if not mf_tab_scrap[] is initial .
+*        clear wa_scrap.
+*        loop at mf_tab_scrap into wa_scrap where scrap_pc <> 0.
+*        endloop.
+*        check not wa_scrap is initial.
+*          perform print_scrap.
+*      endif.
+    WHEN '&PACK'.
+      PERFORM open_file.
+    WHEN 'CALL400'. "Call Scrap screen
+      PERFORM fill_tabscrap.
+      CLEAR: tab_scrap, tab_scrap[].
+      tab_scrap[] = mf_tab_scrap[].
+      CALL SCREEN 400 STARTING AT 5 5.
+      mf_tab_scrap[] = tab_scrap[].
+    WHEN 'DISPLAY'.
+      PERFORM fill_tdline.
+      CALL SCREEN 500 STARTING AT 5 5
+                ENDING   AT 210 20.
+    WHEN 'ORD_STOCK'.	  "@se20200525
+      CHECK i_aufnr IS NOT INITIAL.
+      PERFORM dsp_tabstock.
+
+  ENDCASE.
+
+ENDMODULE.                 " USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*&      Form  CONFIRM_ORDER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM confirm_order .
+  DATA dif TYPE menge_d.
+  DATA : wa_afpo LIKE afpo.
+  DATA: zpackaging LIKE mara-zpackaging.
+
+DATA : cons_wpp_n              LIKE  mseg-menge,            "@se20200228
+       wa_material_number_cons LIKE mara-matnr. "@se20200228
+
+  CLEAR dif.
+  IF i_pcs_ok > 0 . "@SE20200102
+
+    IF ( wpp_prod > 0 ).
+   dif = ( ( i_net_weight / i_pcs_ok )  - wpp_prod ) / wpp_prod   * 100.
+
+      IF abs( dif ) GT i_accepted_prod_dif.
+        MESSAGE e398(00) WITH text-014.
+      ENDIF.
+    ELSE.
+      CLEAR wa_afpo.
+      SELECT SINGLE * FROM afpo INTO wa_afpo
+                                WHERE aufnr = i_aufnr.
+IF wa_afpo-pwerk = '8511' OR wa_afpo-pwerk = '8011' OR wa_afpo-pwerk = '8711'.
+      ELSE.
+        MESSAGE e398(00) WITH text-016.
+      ENDIF.
+    ENDIF.
+
+  ENDIF.
+* Check non packed materials
+  CLEAR zpackaging.
+  SELECT SINGLE zpackaging
+                    FROM mara INTO zpackaging
+                    WHERE matnr = prod_matnr.
+  IF zpackaging = 'O'
+       AND i_exidv IS NOT INITIAL.
+    MESSAGE e068(zetem).
+  ENDIF.
+
+  CLEAR text.
+  CONCATENATE text1
+              text2
+              text3
+              text4
+              text5
+        INTO  text.
+
+  IF prod_colour_so = 'MF'.
+    i_pcs_mf_scrap = i_scrap_pieces.
+    i_add_pcs_ok_mf = i_add_pcs_ok.
+    CLEAR i_pcs_col_scrap.
+    CLEAR i_add_pcs_ok_col.
+    i_mf_scrap_reason = i_scrap_reason.
+    CLEAR i_reason_scrap.
+  ELSE.
+    i_pcs_col_scrap = i_scrap_pieces.
+    i_add_pcs_ok_col = i_add_pcs_ok.
+    CLEAR i_pcs_mf_scrap.
+    CLEAR i_add_pcs_ok_mf.
+    i_reason_scrap = i_scrap_reason.
+    CLEAR i_mf_scrap_reason.
+  ENDIF.
+************* Cancel confirmation if exist this HU **************
+**  perform cancel_conf_hu using i_exidv i_aufnr. "-dt20160516
+************* Cancel confirmation if exist this HU **************
+  IF i_exidv IS INITIAL."Create HU number if user not press gen.pack
+    CALL FUNCTION 'ZETEM_HU_CODES_CREATE'
+      EXPORTING
+        i_datum  = i_budat
+        i_bmwnum = i_bmwnum
+      IMPORTING
+        e_exidv  = i_exidv.
+  ENDIF.
+
+*@dt20181016 new sales strategy <<
+  new_qty_kg  = i_net_weight.
+  new_qty_pc  = i_pcs_ok.
+  CALL FUNCTION 'ZETEM_MOQ_ORDER'
+    EXPORTING
+      aufnr      = i_aufnr
+      new_qty_kg = new_qty_kg.
+  new_qty_pc = new_qty_pc.
+*@dt20181016 new sales strategy >>
+*** Posting date for 3rd shift
+  CALL FUNCTION 'ZBG_CONF_DATE'
+    CHANGING
+      i_date = i_budat.
+
+* @se20200228 Scrap HU number >>>>
+  CLEAR : wa_exidv_sm, wa_exidv_sc.
+  IF ( NOT mf_tab_scrap[] IS INITIAL ) AND ( kdauf+2(2) = '42' ).
+    CLEAR wa_scrap.
+    LOOP AT mf_tab_scrap INTO wa_scrap WHERE scrap_pc <> 0.
+    ENDLOOP.
+    IF NOT wa_scrap IS INITIAL.
+
+      CLEAR : cons_wpp_n, wa_material_number_cons.
+      CALL FUNCTION 'ZORDER_DATA'
+        EXPORTING
+          aufnr      = i_aufnr
+        IMPORTING
+          cons_wpp_n = cons_wpp_n.
+
+      CALL FUNCTION 'ZORDER_DATA'
+        EXPORTING
+          aufnr      = i_aufnr
+        IMPORTING
+          cons_matnr = wa_material_number_cons.
+
+      SELECT SINGLE * FROM mara WHERE matnr = wa_material_number_cons.
+      IF mara-zcolourcategory = 'MF'.
+        wa_material_number_cons = '000000000000230055'.  "No colored
+        CONCATENATE 'SM'  i_exidv+2(18) INTO wa_exidv_sm.
+        wa_scrap_exidv = wa_exidv_sm.
+      ELSE.
+        wa_material_number_cons = '000000000000230058'.  "Colored
+        CONCATENATE 'SC'  i_exidv+2(18) INTO wa_exidv_sc.
+        wa_scrap_exidv = wa_exidv_sc.
+      ENDIF.
+
+    ENDIF.
+  ENDIF.
+* <<<<
+
+  " Confirmation ....
+  CALL FUNCTION 'ZCONF_UPD_PACKAGING_DATA'
+    EXPORTING
+      i_aufnr              = i_aufnr
+      i_arbpl              = i_arbpl
+      i_budat              = i_budat
+      i_exidv              = i_exidv
+      i_gross_weight       = i_gross_weight
+      i_net_weight         = i_net_weight
+      i_pak_material       = i_pak_material
+      i_pcs_ok             = i_pcs_ok
+      i_add_pcs_ok_mf      = i_add_pcs_ok_mf
+      i_add_pcs_ok_col     = i_add_pcs_ok_col
+      i_pcs_mf_scrap       = i_pcs_mf_scrap
+      i_pcs_col_scrap      = i_pcs_col_scrap
+      i_reason_scrap       = i_reason_scrap
+      i_mf_scrap_reason    = i_mf_scrap_reason
+      i_start_date         = i_start_date
+      i_start_time         = i_start_time
+      i_end_date           = i_end_date
+      i_end_time           = i_end_time
+      i_breaks             = i_breaks
+      i_wagon              = i_wagon
+      i_logrp              = i_shift
+      i_anzma              = i_anzma
+*     i_pernr              = i_pernr
+*     i_pernr2             = i_pernr2 "++
+*     i_pernr3             = i_pernr3 "++
+*     i_pernr4             = i_pernr4 "++
+*     i_pernr5             = i_pernr5 "++
+      i_zper2              = i_zper2
+      i_zperqm             = i_zperqm
+      i_personnel_group_no = i_zshift_g "i_shiftgroup
+      i_zcard_no           = i_zcard
+*     i_conf_text          = text1
+      i_text               = text
+*     i_name               = i_name
+*     i_surname            = i_surname
+      i_zhu_mf             = wa_exidv_sm  "@se20200228
+      i_zhu_col            = wa_exidv_sc  "@se20200228
+*     i_set_consum         = 'X'
+    TABLES
+      detail_return        = detail_return.
+
+  break ccc00080.
+  LOOP AT detail_return WHERE type = 'E'
+                           OR type = 'A'.
+*    PERFORM clear.
+    MESSAGE e398(00) WITH detail_return-message.
+  ENDLOOP.
+  IF sy-subrc <> 0.
+*I
+*RU
+*+DT20130312<
+    IF un1 = 'X'.
+      CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+        EXPORTING
+          wait = 'X'
+*       IMPORTING
+*         RETURN        =
+        .
+
+      PERFORM upd_unstock1.
+    ENDIF.
+    IF un2 = 'X'.
+      PERFORM upd_unstock2.
+    ENDIF.
+*+DT20130312>
+**************** Create HU ***********************
+*-dt20160516  -3<<<
+**    perform create_hu using i_exidv i_gross_weight
+**                  i_net_weight i_pak_material
+**                  prod_matnr kdauf kdpos i_pcs_ok.
+**************** Create HU ***********************
+    " @SE20200218 create HU scrap for subcontracting >>>>
+    IF ( NOT mf_tab_scrap[] IS INITIAL ) AND ( kdauf+2(2) = '42' )  .
+      CLEAR wa_scrap.
+      LOOP AT mf_tab_scrap INTO wa_scrap WHERE scrap_pc <> 0.
+      ENDLOOP.
+      IF NOT wa_scrap IS INITIAL.
+        PERFORM create_hu_scrap USING wa_scrap_exidv
+                                      wa_material_number_cons.
+      ENDIF.
+    ENDIF.
+    " <<<<
+
+    READ TABLE detail_return INDEX 1.
+
+    PERFORM save_scrap_file.
+
+    PERFORM save_text.
+  ENDIF.
+  PERFORM clear.
+ENDFORM.                    " CONFIRM_ORDER
+*&---------------------------------------------------------------------*
+*&      Module  ORDER_DATA_GET  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE order_data_get INPUT.
+
+  DATA: i_lines      LIKE TABLE OF tline WITH HEADER LINE,
+        wa_tdline    TYPE tdline,
+        wa_kunnr     TYPE kunnr,
+        wa_kdauf(10) TYPE n,
+        w_zcprofile  LIKE vbap-zcprofile,
+        w_kdmat      LIKE vbap-kdmat.
+
+  DATA: field(10).
+  GET CURSOR FIELD field.
+  CHECK field = 'I_AUFNR'.
+  IF i_aufnr IS NOT INITIAL.
+    CALL FUNCTION 'ZORDER_DATA'
+      EXPORTING
+        aufnr           = i_aufnr
+        screen          = 'PACK'
+        arbpl           = i_arbpl
+      IMPORTING
+        prod_matnr      = prod_matnr
+        prod_descr      = prod_descr
+        prod_colour_so  = prod_colour_so
+        prod_length     = prod_length
+        prod_pc         = prod_pc
+        prod_pc_conf    = prod_pc_conf
+        wpp_prod        = wpp_prod
+        alloy           = alloy
+        temper          = temper
+        purch_order_no  = purch_order_no
+        customer_pr_num = customer_pr_num
+        customer_name   = customer_name
+        mdv01           = mdv01
+        kdauf           = kdauf
+        kdpos           = kdpos
+        prod_level      = prod_level.
+
+    diff = prod_pc - prod_pc_conf.
+
+*@se20191120 remove '41' or '42' from kdauf and find customer >>>>
+    MOVE kdauf TO kdauf_display.
+    IF ( kdauf+2(2) = '41' ) OR ( kdauf+2(2) = '42' ).
+      MOVE kdauf+4(6) TO kdauf_display.
+
+      MOVE kdauf_display TO wa_kdauf.
+      SELECT SINGLE kunnr FROM vbak INTO wa_kunnr
+                                   WHERE vbeln = wa_kdauf.
+      IF sy-subrc = 0.
+        SELECT SINGLE name1 FROM kna1 INTO customer_name
+                                     WHERE kunnr = wa_kunnr.
+      ENDIF.
+      " @SE20200226 >>>>
+      IF customer_pr_num IS INITIAL.
+        SELECT SINGLE * FROM mara WHERE matnr = prod_matnr.
+        IF mara-spart = '10' OR mara-spart = '40' OR
+           mara-spart = '41' OR mara-spart = '42' OR
+           mara-spart = '45' OR mara-spart = '53'.
+  SELECT SINGLE zcprofile kdmat FROM vbap INTO ( w_zcprofile , w_kdmat )
+          WHERE vbeln = wa_kdauf
+            AND posnr = kdpos.
+          customer_pr_num = w_zcprofile(18).
+          IF customer_pr_num IS INITIAL.
+            customer_pr_num = w_kdmat(18).
+          ENDIF.
+        ENDIF.
+        IF customer_pr_num IS INITIAL.
+          SELECT SINGLE * FROM afpo WHERE aufnr = i_aufnr.
+          SELECT SINGLE matgr FROM marc
+                   INTO customer_pr_num
+                  WHERE matnr = prod_matnr
+                    AND werks = afpo-dwerk.
+        ENDIF.
+      ENDIF.
+      " @SE20200226 <<<<
+
+    ENDIF.
+
+    CASE kdauf+2(2).
+      WHEN '41'.
+*        SO_CATEGORY = 'ETEM Ex'.
+        so_category = 'Extrusion'.    "@se20191213
+      WHEN '42'.
+*        SO_CATEGORY = 'ETEM Sub'.
+        so_category = 'Subcontracting'.    "@se20191213
+      WHEN OTHERS.
+*        SO_CATEGORY = 'Extrusion'.
+        so_category = ' '.
+    ENDCASE.
+*@se20191120 >>>>
+
+*@DT20160516 <<<<
+*@dt20171207 remove when problem with preactor solved
+    IF prod_colour_so IS INITIAL.
+      DATA: lv_cuobj LIKE vbap-cuobj.
+      CLEAR lv_cuobj.
+      SELECT SINGLE cuobj FROM vbap INTO lv_cuobj
+                         WHERE vbeln = kdauf
+                           AND posnr = kdpos.
+      IF NOT lv_cuobj IS INITIAL.
+        CALL FUNCTION 'ZCUCB_GET_CONFIGURATION_ALL'
+          EXPORTING
+            cuobj  = lv_cuobj
+          IMPORTING
+            colour = prod_colour_so.
+      ENDIF.
+    ENDIF.
+*@dt20171207>>>
+
+    CLEAR zprnum.
+    SELECT SINGLE zprnum FROM mara
+                        INTO zprnum
+                        WHERE matnr = prod_matnr.
+    IF NOT zprnum IS INITIAL.
+      CLEAR wa_packg.
+      SELECT SINGLE * FROM zpackg INTO wa_packg
+                     WHERE zprofil = zprnum.
+      IF sy-subrc = 0.
+        packtxt = text-i00.
+        statusicon = '@0A@'.
+      ELSE.
+        CLEAR packtxt.
+        statusicon = '@08@'.
+      ENDIF.
+    ENDIF.
+***>>>
+
+*@SE20190919>>>
+    CALL FUNCTION 'ZETEM_ORDER_VARIANCES'
+      EXPORTING
+        kdauf     = kdauf
+        kdpos     = kdpos
+        aufnr     = i_aufnr
+*       ONLY_PERC =
+      IMPORTING
+*       UEBTO     =
+*       UNTTO     =
+*       UEBTO_GEN =
+*       UNTTO_GEN =
+        ztargetkg = i_targetkg
+        ztargetpc = i_targetpc
+        zminkg_so = i_minkg_so
+        zminpc_so = i_minpc_so
+        zmaxkg_so = i_maxkg_so
+        zmaxpc_so = i_maxpc_so
+        zminkg_g  = i_minkg_g
+        zminpc_g  = i_minpc_g
+        zmaxkg_g  = i_maxkg_g
+        zmaxpc_g  = i_maxpc_g.
+***>>>
+*@SE20191108>>>
+    CLEAR : type_o, pack_des_o, type_i, pack_des_i,
+            i_tdline, i_lines, i_lines[]. " @se20191120
+    CALL FUNCTION 'ZETM_PACK_INSTRUCTIONS'
+      EXPORTING
+        aufnr         = i_aufnr
+        spras         = sy-langu
+      IMPORTING
+        pack_type_o   = type_o
+        description_o = pack_des_o
+        pack_type_i   = type_i
+        description_i = pack_des_i
+      TABLES
+        lines         = i_lines.
+
+    CLEAR wa_tdline.
+    LOOP AT i_lines.
+      IF sy-tabix = 1.  " first loop
+        wa_tdline = i_lines-tdline.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    i_tdline = wa_tdline.
+***>>>
+
+  ENDIF.
+ENDMODULE.                 " ORDER_DATA_GET  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  INITIALIZE_DATA  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE initialize_data OUTPUT.
+  IF first_time = 'X'.
+    CLEAR first_time.
+    i_pak_material = '000000000028000090'.
+    SELECT SINGLE maktx FROM makt INTO maktx
+    WHERE matnr = '000000000028000090'
+      AND spras = sy-langu.
+    i_budat        = sy-datum.
+    i_start_date   = sy-datum.
+    i_start_time   = sy-uzeit.
+    i_end_date     = sy-datum.
+    i_end_time     = sy-uzeit.
+*@DT20130927 <
+    GET TIME FIELD lv_time.
+    IF lv_time BETWEEN '000000' AND '060000'.
+*    if lv_time between '140000' and '160000'.
+      i_budat = i_budat - 1.
+      i_start_date   = i_start_date - 1.
+      i_end_date     = i_end_date - 1.
+    ENDIF.
+
+  ENDIF.
+****
+* STATUSICON = '@08@'."RED = '@0A@' - GREEN = '@08@'
+  LOOP AT SCREEN.
+    IF screen-name = 'BTNPACK'.
+      IF statusicon = '@08@'.
+        screen-input = 0.
+      ELSE.
+        screen-input = 1.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+
+ENDMODULE.                 " INITIALIZE_DATA  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  AUFNR_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE aufnr_sh INPUT.
+  DATA:
+  production_orders TYPE TABLE OF zprod_order_data2 WITH HEADER LINE.
+  DATA : it_rettab1 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+  CLEAR : production_orders[], production_orders[].
+  CALL FUNCTION 'ZVALIDATION_ORDER'
+    EXPORTING
+      screen            = 'PACK'
+      werks             = i_werks
+    TABLES
+      production_orders = production_orders.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'PROD_ORDER'
+      value_org       = 'S'
+    TABLES
+      value_tab       = production_orders
+      return_tab      = it_rettab1
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  READ TABLE it_rettab1 INDEX 1.
+  i_aufnr  = it_rettab1-fieldval.
+
+ENDMODULE.                 " AUFNR_SH  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  WORKC_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE workc_sh INPUT.
+  DATA: BEGIN OF it_valuetab2 OCCURS 0,
+          arbpl LIKE crhd-arbpl,
+          ktext LIKE crtx-ktext,
+        END OF it_valuetab2,
+        it_rettab2 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+  RANGES: x_arbpl FOR zcrhd-arbpl.
+
+  CLEAR: it_valuetab2, it_valuetab2[].
+
+  REFRESH x_arbpl.
+  x_arbpl = 'EEQ'.
+  x_arbpl-low = 'PACK'. APPEND x_arbpl.
+
+  SELECT * FROM zcrhd WHERE veran = '004'
+                        AND arbpl IN x_arbpl.
+    it_valuetab2-arbpl = zcrhd-arbpl.
+    it_valuetab2-ktext = zcrhd-ktext.
+    APPEND it_valuetab2.
+  ENDSELECT.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+*     ddic_structure  = 'ZCRHD_SH'
+      retfield        = 'ARBPL'
+      value_org       = 'S'
+    TABLES
+      value_tab       = it_valuetab2
+      return_tab      = it_rettab2
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  READ TABLE it_rettab2 INDEX 1.
+  i_arbpl  = it_rettab2-fieldval.
+
+ENDMODULE.                 " WORKC_SH  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  PAK_MAT_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE pak_mat_sh INPUT.
+
+  CALL FUNCTION 'F4IF_FIELD_VALUE_REQUEST'
+    EXPORTING
+      searchhelp      = 'ZPACK_MAT_SH'
+      shlpparam       = 'MATNR'
+      fieldname       = ' '
+      tabname         = ' '
+    TABLES
+      return_tab      = search_itab
+    EXCEPTIONS
+      no_values_found = 1.
+
+  MOVE search_itab-fieldval TO i_pak_material.
+  REFRESH search_itab.
+  SELECT SINGLE maktx FROM makt INTO maktx
+    WHERE matnr = search_itab-fieldval
+      AND spras = sy-langu.
+
+ENDMODULE.                 " PAK_MAT_SH  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  REASON_SCRAP_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE reason_scrap_sh INPUT.
+  DATA: BEGIN OF it_valuetab3 OCCURS 0,
+          grund   LIKE zscrap_reason_b-grund,
+          grund_t LIKE zscrap_reason_b-grund_t,
+        END OF it_valuetab3,
+        it_rettab3 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+  CLEAR: it_valuetab3, it_valuetab3[].
+
+  SELECT * FROM zscrap_reason_b WHERE zz_type = 'PACKAGING'.
+    it_valuetab3-grund = zscrap_reason_b-grund.
+    it_valuetab3-grund_t = zscrap_reason_b-grund_t.
+    APPEND it_valuetab3.
+  ENDSELECT.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'GRUND'
+      value_org       = 'S'
+    TABLES
+      value_tab       = it_valuetab3
+      return_tab      = it_rettab3
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  break ccc00080.
+  READ TABLE it_rettab3 INDEX 1.
+  i_scrap_reason = it_rettab3-fieldval.
+
+ENDMODULE.                 " REASON_SCRAP_SH  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  WAGEGR_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE shift_sh INPUT.
+  DATA: BEGIN OF it_valuetab4 OCCURS 0,
+          logrp LIKE t421t-logrp,
+          txt   LIKE t421t-txt,
+        END OF it_valuetab4,
+        it_rettab4 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+  CLEAR: it_valuetab4, it_valuetab4[].
+  SELECT SINGLE dwerk FROM afpo INTO i_werks WHERE aufnr = i_aufnr.
+  SELECT * FROM t421t WHERE spras = 'W'
+                        AND werks = i_werks. "spin off
+    it_valuetab4-logrp = t421t-logrp.
+    it_valuetab4-txt   = t421t-txt.
+    APPEND it_valuetab4.
+  ENDSELECT.
+  IF sy-subrc <> 0.
+    SELECT * FROM t421t WHERE spras = 'G'
+                        AND werks = i_werks. "spin off
+      it_valuetab4-logrp = t421t-logrp.
+      it_valuetab4-txt   = t421t-txt.
+      APPEND it_valuetab4.
+    ENDSELECT.
+  ENDIF.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'LOGRP'
+      value_org       = 'S'
+    TABLES
+      value_tab       = it_valuetab4
+      return_tab      = it_rettab4
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  break ccc00080.
+  READ TABLE it_rettab4 INDEX 1.
+  i_shift = it_rettab4-fieldval.
+
+ENDMODULE.                 " WAGEGR_SH  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  zshift_g_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE zshift_g_sh INPUT.
+  DATA: BEGIN OF it_valuetab5 OCCURS 0,
+          zshift_g TYPE zshift_g,
+        END OF it_valuetab5,
+        it_rettab5 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+  DATA temp_mf LIKE zshift_group-mf.
+
+  CLEAR: it_valuetab5, it_valuetab5[].
+
+
+  CLEAR temp_mf.
+  IF prod_colour_so = 'MF'.
+    temp_mf = '1'.
+  ELSE.
+    temp_mf = '2'.
+  ENDIF.
+
+  SELECT * FROM zshift_group WHERE zscreen = 'PACK'
+                        AND ( mf = temp_mf OR mf = ' ' ).
+    it_valuetab5-zshift_g = zshift_group-zshift_g.
+    APPEND it_valuetab5.
+  ENDSELECT.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'ZSHIFT_G'
+      value_org       = 'S'
+    TABLES
+      value_tab       = it_valuetab5
+      return_tab      = it_rettab5
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  READ TABLE it_rettab5 INDEX 1.
+  i_zshift_g = it_rettab5-fieldval.
+
+ENDMODULE.                 " zshift_g_SH  INPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Module  zshift_g_qc_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE zshift_g_qc_sh INPUT.
+  DATA: BEGIN OF it_valuetab15 OCCURS 0,
+          zshift_g_qc TYPE zshift_g,
+        END OF it_valuetab15,
+        it_rettab15 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+  CLEAR: it_valuetab15, it_valuetab15[].
+
+  SELECT * FROM zshift_group WHERE zscreen = ' '.
+    it_valuetab15-zshift_g_qc = zshift_group-zshift_g.
+    APPEND it_valuetab15.
+  ENDSELECT.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'ZSHIFT_G'
+      value_org       = 'S'
+    TABLES
+      value_tab       = it_valuetab15
+      return_tab      = it_rettab15
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  READ TABLE it_rettab15 INDEX 1.
+  i_zshift_g_qc = it_rettab15-fieldval.
+
+ENDMODULE.                 " zshift_g__qc_SH  INPUT
+
+*----------------------------------------------------------------------*
+*  MODULE check_aufnr INPUT
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+MODULE check_aufnr INPUT.
+  DATA : exists,
+         exists_non_teco,
+         prod_level_ok.
+
+  CLEAR : exists,
+         exists_non_teco,
+         prod_level_ok.
+
+  IF ok_code = 'CONF'.
+    IF i_aufnr IS INITIAL.
+      CLEAR ok_code.
+      MESSAGE e398(00) WITH text-001.
+    ELSEIF i_aufnr IS NOT INITIAL.
+      DATA:
+    production_orders_ TYPE TABLE OF zprod_order_data2 WITH HEADER LINE.
+      CLEAR : production_orders_[], production_orders_[].
+      CALL FUNCTION 'ZVALIDATION_ORDER'
+        EXPORTING
+          aufnr             = i_aufnr
+          screen            = 'PACK'
+          werks             = i_werks " spin off
+        IMPORTING
+          exists            = exists
+          exists_non_teco   = exists_non_teco
+          prod_level_ok     = prod_level_ok
+        TABLES
+          production_orders = production_orders_.
+
+      IF exists <> 'X'.
+        CLEAR i_aufnr.
+        MESSAGE text-e01 TYPE 'E'. " Production Order does not exist!
+      ENDIF.
+      IF exists_non_teco <> 'X'.
+        CLEAR i_aufnr.
+    MESSAGE text-e02 TYPE 'E'. " Production Order Technically Completed!
+      ENDIF.
+      IF prod_level_ok <> 'X'.
+        CLEAR i_aufnr.
+        MESSAGE text-e03 TYPE 'E'. " Wrong Order! Check Level!
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  IF  i_aufnr IS NOT INITIAL.
+    CLEAR : production_orders_[], production_orders_[].
+    CALL FUNCTION 'ZVALIDATION_ORDER'
+      EXPORTING
+        aufnr             = i_aufnr
+        screen            = 'PACK'
+        werks             = i_werks " spin off
+      IMPORTING
+        exists            = exists
+        exists_non_teco   = exists_non_teco
+        prod_level_ok     = prod_level_ok
+      TABLES
+        production_orders = production_orders_.
+
+    IF exists <> 'X'.
+      CLEAR i_aufnr.
+      MESSAGE text-e01 TYPE 'W'. " Production Order does not exist!
+    ELSE.
+      IF prod_level_ok <> 'X'.
+        CLEAR i_aufnr.
+        MESSAGE text-e03 TYPE 'W'. " Wrong Order! Check Level!
+      ELSE.
+        IF exists_non_teco <> 'X'.
+    MESSAGE text-e02 TYPE 'W'. " Production Order Technically Completed!
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+
+ENDMODULE.                 " check_values  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  check_budat  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_budat INPUT.
+
+  IF i_budat IS INITIAL AND
+     ok_code = 'CONF'.
+    CLEAR ok_code.
+    MESSAGE e398(00).
+  ENDIF.
+
+ENDMODULE.                 " check_budat  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_WORKC  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_workc INPUT.
+  IF i_arbpl IS NOT INITIAL.
+    SELECT SINGLE * FROM zcrhd WHERE
+        arbpl = i_arbpl
+    AND veran = '004'.
+    IF sy-subrc <> 0.
+      CLEAR i_arbpl.
+      MESSAGE e398(00) WITH text-003.
+    ENDIF.
+  ENDIF.
+ENDMODULE.                 " CHECK_WORKC  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_MATERIAL  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_pak_mat INPUT.
+  IF i_pak_material IS NOT INITIAL.
+    SELECT SINGLE * FROM zpack_mat WHERE matnr = i_pak_material AND
+      spras = sy-langu.
+    IF sy-subrc <> 0.
+      CLEAR i_pak_material.
+      MESSAGE e398(00) WITH text-012.
+    ENDIF.
+    SELECT SINGLE * FROM makt
+    WHERE matnr = i_pak_material
+      AND spras = sy-langu.
+    maktx = makt-maktx.
+  ENDIF.
+ENDMODULE.                 " CHECK_MATERIAL  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_REASON_SCRAP  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_reason_scrap INPUT.
+  DATA t_grund LIKE zscrap_reason_b-grund.
+
+  IF i_scrap_reason IS NOT INITIAL.
+    t_grund = i_scrap_reason.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = t_grund
+      IMPORTING
+        output = t_grund.
+
+    SELECT SINGLE * FROM zscrap_reason_b WHERE
+        grund = t_grund AND
+        zz_type = 'PACKAGING'.
+    IF sy-subrc <> 0.
+      CLEAR i_scrap_reason.
+      MESSAGE e398(00) WITH text-004.
+    ENDIF.
+  ENDIF.
+
+ENDMODULE.                 " CHECK_REASON_SCRAP  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_SHIFT  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_shift INPUT.
+  IF i_shift IS INITIAL AND
+     ok_code = 'CONF'.
+    CLEAR ok_code.
+    MESSAGE e398(00) WITH text-008.
+  ENDIF.
+
+  IF i_shift IS NOT INITIAL.
+    SELECT SINGLE * FROM t421t WHERE
+        logrp = i_shift
+    AND ( spras = 'W' OR spras = 'G' )
+    AND werks = i_werks. " spin off
+    IF sy-subrc <> 0.
+      CLEAR i_shift.
+      MESSAGE e398(00) WITH text-005.
+    ENDIF.
+  ENDIF.
+
+ENDMODULE.                 " CHECK_SHIFT  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_zshift_g  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_zshift_g INPUT.
+  IF i_zshift_g IS INITIAL AND
+     ok_code = 'CONF'.
+    CLEAR ok_code.
+    MESSAGE e398(00) WITH text-009.
+  ENDIF.
+
+  IF i_zshift_g IS NOT INITIAL.
+
+    CLEAR temp_mf.
+    IF prod_colour_so = 'MF'.
+      temp_mf = '1'.
+    ELSE.
+      temp_mf = '2'.
+    ENDIF.
+
+    SELECT SINGLE * FROM zshift_group
+    WHERE    zshift_g = i_zshift_g
+    AND zscreen = 'PACK'
+    AND ( mf = temp_mf OR mf = ' ' ).
+    IF sy-subrc <> 0.
+      CLEAR i_zshift_g.
+      MESSAGE e398(00) WITH text-006.
+    ENDIF.
+  ENDIF.
+
+ENDMODULE.                 " CHECK_zshift_g  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_zshift_g_qc  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_zshift_g_qc INPUT.
+  IF i_zshift_g_qc IS INITIAL AND
+     ok_code = 'CONF'.
+    CLEAR ok_code.
+    MESSAGE e398(00) WITH text-a09.
+  ENDIF.
+
+  IF i_zshift_g_qc IS NOT INITIAL.
+
+    SELECT SINGLE * FROM zshift_group WHERE
+        zshift_g = i_zshift_g_qc
+    AND zscreen = ' '.
+    IF sy-subrc <> 0.
+      CLEAR i_zshift_g_qc.
+      MESSAGE e398(00) WITH text-a06.
+    ENDIF.
+  ENDIF.
+
+ENDMODULE.                 " CHECK_zshift_g_qc  INPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Module  check_pernr  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_pernr INPUT.
+  DATA: lt_fields  LIKE  dynpread OCCURS 0 WITH HEADER LINE.
+  REFRESH lt_fields.
+**  lt_fields-fieldname = 'I_PERNR'.  append lt_fields.
+**  lt_fields-fieldname = 'I_PERNR2'.  append lt_fields.
+**  lt_fields-fieldname = 'I_PERNR3'.  append lt_fields.
+**  lt_fields-fieldname = 'I_PERNR4'.  append lt_fields.
+**  lt_fields-fieldname = 'I_PERNR5'.  append lt_fields.
+  CALL FUNCTION 'DYNP_VALUES_READ'
+    EXPORTING
+      dyname     = sy-repid
+      dynumb     = '0100'
+    TABLES
+      dynpfields = lt_fields.
+
+  FIELD-SYMBOLS: <fs>, <fs2>, <fs3>.
+  DATA: name    TYPE string, surname TYPE string.
+  LOOP AT lt_fields.
+**    CHECK NOT LT_FIELDS-FIELDVALUE IS INITIAL.
+    ASSIGN (lt_fields-fieldname) TO <fs>.
+    CONCATENATE 'I_NAME' lt_fields-fieldname+7(1) INTO name.
+    CONCATENATE 'I_SURNAME' lt_fields-fieldname+7(1) INTO surname.
+    ASSIGN (name) TO <fs2>.
+    ASSIGN (surname) TO <fs3>.
+    IF lt_fields-fieldvalue IS INITIAL.
+      CLEAR: <fs2>, <fs3>.
+    ELSE.
+**      perform get_perdata using <fs>"i_pernr "spin off
+**                       changing <fs2> <fs3>.
+    ENDIF.
+  ENDLOOP.
+
+ENDMODULE.                 " check_pernr  INPUT
+*&---------------------------------------------------------------------*
+*&      Form  SAVE_TEXT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM save_text .
+  DATA: gw_thead LIKE thead OCCURS 0 WITH HEADER LINE,
+        it_line  TYPE TABLE OF tline WITH HEADER LINE.
+  DATA: p_txtnam LIKE thead-tdname.
+
+*EN
+*RMEL Order confirmation text
+*AUFK       Order text
+  CLEAR: gw_thead, gw_thead[].
+  CONCATENATE sy-mandt
+              detail_return-conf_no
+              detail_return-conf_cnt
+              INTO gw_thead-tdname.
+  gw_thead-tdid     = 'RMEL'.
+  gw_thead-tdspras  = sy-langu.
+  gw_thead-tdobject = 'AUFK'.
+  APPEND gw_thead.
+
+  CLEAR: it_line, it_line[].
+  IF text1 IS NOT INITIAL.
+    CLEAR it_line.
+    it_line-tdformat  = '*'.
+    it_line-tdline    = text1.
+    APPEND it_line.
+  ENDIF.
+  IF text2 IS NOT INITIAL.
+    CLEAR it_line.
+    it_line-tdformat  = '*'.
+    it_line-tdline    = text2.
+    APPEND it_line.
+  ENDIF.
+  IF text3 IS NOT INITIAL.
+    CLEAR it_line.
+    it_line-tdformat  = '*'.
+    it_line-tdline    = text3.
+    APPEND it_line.
+  ENDIF.
+  IF text4 IS NOT INITIAL.
+    CLEAR it_line.
+    it_line-tdformat  = '*'.
+    it_line-tdline    = text4.
+    APPEND it_line.
+  ENDIF.
+  IF text5 IS NOT INITIAL.
+    CLEAR it_line.
+    it_line-tdformat  = '*'.
+    it_line-tdline    = text5.
+    APPEND it_line.
+  ENDIF.
+
+  break ccc00080.
+  CALL FUNCTION 'SAVE_TEXT'
+    EXPORTING
+      header          = gw_thead
+      insert          = 'X'
+      savemode_direct = 'X'
+    TABLES
+      lines           = it_line
+    EXCEPTIONS
+      id              = 1
+      language        = 2
+      name            = 3
+      object          = 4
+      OTHERS          = 5.
+  IF sy-subrc <> 0.
+    MESSAGE e398(00).
+  ENDIF.
+
+ENDFORM.                    " SAVE_TEXT
+*&---------------------------------------------------------------------*
+*&      Form  CLEAR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM clear .
+  CLEAR:  i_aufnr,
+          i_arbpl,
+          i_budat,
+          i_exidv,
+          i_gross_weight,
+          i_net_weight  ,
+          i_pak_material,
+          maktx,
+          i_pcs_ok,
+          i_pcs_mf_scrap,
+          i_pcs_col_scrap,
+          i_reason_scrap,
+          i_mf_scrap_reason,
+          i_start_date,
+          i_start_time,
+          i_end_date,
+          i_end_time,
+          i_breaks,
+          i_wagon,
+          i_shift,
+          i_anzma,
+          i_pernr,i_name,i_surname,
+          i_pernr2,i_name2,i_surname2,
+          i_pernr3,i_name3,i_surname4,
+          i_pernr4,i_name4,i_surname4,
+          i_pernr5,i_name5,i_surname5,
+          i_zper2,
+          i_zperqm,
+          i_accepted_dif,
+          i_shiftgroup,
+          i_scrap_pieces,
+          i_add_pcs_ok,
+          i_scrap_reason,
+          i_zshift_g  ,
+          i_zcard,
+          i_un,
+          i_name,
+          i_surname.
+
+  CLEAR: text1,
+         text2(50),
+         text3(50),
+         text4(50),
+         text5(50),
+         text.
+
+
+  CLEAR:  prod_matnr,
+          prod_descr,
+          prod_colour_so,
+          prod_length,
+          wpp_prod,
+          prod_pc,
+          prod_pc_conf,
+          diff,
+          alloy,
+          temper,
+          purch_order_no,
+          customer_pr_num.
+
+  CLEAR: un1, un2. "+DT20130312
+
+
+  i_budat        = sy-datum.
+  i_start_date   = sy-datum.
+  i_start_time   = sy-uzeit.
+  i_end_date     = sy-datum.
+  i_end_time     = sy-uzeit.
+*@DT20130927 <
+  GET TIME FIELD lv_time.
+  IF lv_time BETWEEN '000000' AND '060000'.
+*    if lv_time between '140000' and '160000'.
+    i_budat = i_budat - 1.
+    i_start_date   = i_start_date - 1.
+    i_end_date     = i_end_date - 1.
+  ENDIF.
+
+
+ENDFORM.                    " CLEAR
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_QUAN  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_quan INPUT.
+  IF i_pcs_ok IS INITIAL AND
+     i_scrap_pieces IS INITIAL AND "@SE20191231
+*  i_pcs_col_scrap is initial and
+*     i_pcs_mf_scrap is initial and
+     ok_code = 'CONF'.
+    CLEAR ok_code.
+    MESSAGE e398(00) WITH text-010.
+  ENDIF.
+
+ENDMODULE.                 " CHECK_QUAN  INPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_CONFIRMATION_TIME  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_confirmation_time INPUT.
+  DATA: machine_dif LIKE tvro-fahztd,
+        date2_early LIKE rv56a-selkz,
+        tim         LIKE sy-uzeit.
+
+  IF NOT i_start_date IS INITIAL AND
+     NOT i_start_time IS INITIAL.
+*@DT20150216 < Get time and calculate date.
+    CLEAR tim.
+    GET TIME FIELD tim.
+    IF tim BETWEEN '000000' AND '060000'.
+**      i_budat = i_budat - 1.
+      IF i_start_time NOT BETWEEN '000000' AND '060000'.
+        i_start_date   = i_start_date - 1.
+        i_end_date     = i_end_date - 1.
+        start_time = tim.
+      ENDIF.
+    ENDIF.
+    IF NOT tim BETWEEN '000000' AND '060000'.
+**      i_budat = i_budat - 1.
+      IF i_start_time BETWEEN '000000' AND '060000'.
+        i_start_date   = i_start_date + 1.
+        i_end_date     = i_end_date + 1.
+        start_time = tim.
+      ENDIF.
+    ENDIF.
+*@DT20150216 >
+
+    CLEAR: machine_dif,
+           date2_early.
+    CALL FUNCTION 'SD_CALC_DURATION_FROM_DATETIME'
+      EXPORTING
+        i_date1       = i_start_date
+        i_time1       = i_start_time
+        i_date2       = i_end_date
+        i_time2       = i_end_time
+      IMPORTING
+        e_tdiff       = machine_dif
+        e_date2_early = date2_early.
+
+    IF date2_early = 'X'.
+      MESSAGE e398(00) WITH text-w01 i_end_date.
+      CLEAR i_end_date.
+    ENDIF.
+
+
+    DATA seconds TYPE int4.
+    DATA minutes TYPE int4.
+    CLEAR : seconds, minutes.
+
+    CALL FUNCTION 'SALP_SM_CALC_TIME_DIFFERENCE'
+      EXPORTING
+        date_1  = i_start_date
+        time_1  = i_start_time
+        date_2  = i_end_date
+        time_2  = i_end_time
+      IMPORTING
+        seconds = seconds.
+
+    minutes = seconds / 60.
+
+    IF i_breaks > minutes .
+      MESSAGE e398(00) WITH text-015.
+    ENDIF.
+
+  ENDIF.
+
+ENDMODULE.                 " CHECK_CONFIRMATION_TIME  INPUT
+*&---------------------------------------------------------------------*
+*&      Form  FAILURE_PROCESS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM failure_process .
+
+  CLEAR text.
+  CONCATENATE text1
+              text2
+              text3
+              text4
+              text5
+        INTO  text.
+
+  IF prod_colour_so = 'MF'.
+    i_pcs_mf_scrap = i_scrap_pieces.
+    i_add_pcs_ok_mf = i_add_pcs_ok.
+    CLEAR i_pcs_col_scrap.
+    CLEAR i_add_pcs_ok_col.
+    i_mf_scrap_reason = i_scrap_reason.
+    CLEAR i_reason_scrap.
+  ELSE.
+    i_pcs_col_scrap = i_scrap_pieces.
+    i_add_pcs_ok_col = i_add_pcs_ok.
+    CLEAR i_pcs_mf_scrap.
+    CLEAR i_add_pcs_ok_mf.
+    i_reason_scrap = i_scrap_reason.
+    CLEAR i_mf_scrap_reason.
+  ENDIF.
+
+
+  CALL FUNCTION 'ZCONF_UPD_PACKAGING_DATA'
+    EXPORTING
+      i_aufnr              = i_aufnr
+      i_arbpl              = i_arbpl
+      i_budat              = i_budat
+      i_exidv              = i_exidv
+      i_gross_weight       = i_gross_weight
+      i_net_weight         = i_net_weight
+      i_pak_material       = i_pak_material
+      i_pcs_ok             = i_pcs_ok
+      i_add_pcs_ok_mf      = i_add_pcs_ok_mf
+      i_add_pcs_ok_col     = i_add_pcs_ok_col
+      i_pcs_mf_scrap       = i_pcs_mf_scrap
+      i_pcs_col_scrap      = i_pcs_col_scrap
+      i_reason_scrap       = i_reason_scrap
+      i_start_date         = i_start_date
+      i_start_time         = i_start_time
+      i_end_date           = i_end_date
+      i_end_time           = i_end_time
+      i_breaks             = i_breaks
+      i_wagon              = i_wagon
+      i_logrp              = i_shift
+      i_anzma              = i_anzma
+*     i_pernr              = i_pernr
+*     i_pernr2             = i_pernr2 "++
+*     i_pernr3             = i_pernr3 "++
+*     i_pernr4             = i_pernr4 "++
+*     i_pernr5             = i_pernr5 "++
+      i_zper2              = i_zper2
+      i_zperqm             = i_zperqm
+      i_personnel_group_no = i_zshift_g " i_shiftgroup
+      failed               = 'X'
+      i_text               = text
+*     i_name               = i_name
+*     i_surname            = i_surname
+    TABLES
+      detail_return        = detail_return.
+
+  PERFORM clear.
+
+ENDFORM.                    " FAILURE_PROCESS
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_WEIGHTS  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_weights INPUT.
+  IF i_gross_weight IS NOT INITIAL.
+    IF  i_net_weight IS NOT INITIAL.
+      IF i_gross_weight < i_net_weight.
+        CLEAR: i_gross_weight.
+        MESSAGE e398(00) WITH text-011.
+        EXIT.
+      ENDIF.
+    ENDIF.
+  ELSE.
+*    IF i_gross_weight <= 1140 . "@SE20200615
+      i_gross_weight = i_net_weight.
+*    ENDIF.
+  ENDIF.
+
+*  IF i_net_weight > 1140 . "@SE20200615
+*    CLEAR: i_net_weight.
+*    MESSAGE e398(00) WITH text-025.
+*  ENDIF.
+
+ENDMODULE.                 " CHECK_WEIGHTS  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_MF_SCRAP_REASON  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_mf_scrap_reason INPUT.
+
+  IF i_mf_scrap_reason IS NOT INITIAL.
+    CLEAR trugt.
+    SELECT SINGLE * FROM trugt WHERE
+        grund = i_mf_scrap_reason
+    AND spras = 'W'
+    AND werks = i_werks. " spin off
+    IF sy-subrc <> 0.
+      CLEAR i_mf_scrap_reason.
+      MESSAGE e398(00) WITH text-004.
+    ENDIF.
+  ENDIF.
+
+ENDMODULE.                 " CHECK_MF_SCRAP_REASON  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  MF_SCRAP_REASON_SH  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE mf_scrap_reason_sh INPUT.
+
+  DATA: BEGIN OF it_valuetab31 OCCURS 0,
+          grund LIKE trug-grund,
+          grdtx LIKE trugt-grdtx,
+        END OF it_valuetab31,
+        it_rettab31 LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+
+  CLEAR: it_valuetab31, it_valuetab31[].
+
+  SELECT * FROM trugt WHERE spras = 'W'
+                        AND werks = i_werks. "spinn off
+    it_valuetab31-grund = trugt-grund.
+    it_valuetab31-grdtx = trugt-grdtx.
+    APPEND it_valuetab31.
+  ENDSELECT.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'GRUND'
+      value_org       = 'S'
+    TABLES
+      value_tab       = it_valuetab31
+      return_tab      = it_rettab31
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  break ccc00080.
+  READ TABLE it_rettab31 INDEX 1.
+  i_mf_scrap_reason = it_rettab31-fieldval.
+
+ENDMODULE.                 " MF_SCRAP_REASON_SH  INPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_WAGON  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_wagon INPUT.
+
+  DATA wagon_num_ok.
+
+  IF sy-ucomm = 'CONF'.
+
+    CLEAR wagon_num_ok.
+
+    CALL FUNCTION 'ZWAGON_VALIDATE'
+      EXPORTING
+        wagon_no     = i_wagon
+      IMPORTING
+        wagon_num_ok = wagon_num_ok.
+
+    IF wagon_num_ok <> 'X'.
+      MESSAGE text-020 TYPE 'E'.
+    ENDIF.
+
+  ENDIF.
+
+ENDMODULE.                 " CHECK_WAGON  INPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_TB_ORDERS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM create_tb_orders .
+
+  IF prod_level = 'TB_PACK' AND mdv01 = 'P_GEN'.
+    IF prod_colour_so NE 'MF'.
+      CALL FUNCTION 'Z_TB_PO_CREATE'
+        EXPORTING
+          vbeln = kdauf
+          posnr = kdpos
+          pack  = 'X'.
+    ENDIF.
+  ENDIF.
+
+
+ENDFORM.                    " CREATE_TB_ORDERS
+*&---------------------------------------------------------------------*
+*&      Form  UPD_UNSTOCK2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM upd_unstock2 .
+
+  CLEAR: wa_unstock, wa_unstock[].
+
+  CALL FUNCTION 'ZORDER_UN_STOCK_KGPC'
+    EXPORTING
+      i_pcs_ok   = i_pcs_ok
+      i_budat    = i_budat
+      aufnr      = i_aufnr
+* IMPORTING
+*     UPDATE     =
+    TABLES
+      wa_unstock = wa_unstock.
+
+
+ENDFORM.                    " UPD_UNSTOCK1
+*&---------------------------------------------------------------------*
+*&      Form  UPD_UNSTOCK1
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM upd_unstock1 .
+
+  CLEAR: wa_unstock, wa_unstock[].
+
+  CALL FUNCTION 'ZORDER_UN_STOCK'
+    EXPORTING
+      i_net_weight = i_net_weight
+      i_pcs_ok     = i_pcs_ok
+      i_budat      = i_budat
+      aufnr        = i_aufnr
+* IMPORTING
+*     UPDATE       =
+    TABLES
+      wa_unstock   = wa_unstock.
+
+
+
+ENDFORM.                    " UPD_UNSTOCK1
+
+*&---------------------------------------------------------------------*
+*&      Form  PRINT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM print .
+
+*============- smartform =======================
+  DATA   : gs_rldri TYPE rldri.
+  DATA   : t_rldri  TYPE TABLE OF rldri.
+
+  DATA : lv_fmname   TYPE rs38l_fnam,
+         w_cparam    TYPE ssfctrlop,
+         lv_formname TYPE tdsfname.
+  DATA w_output_options TYPE ssfcompop.
+
+  DATA zprint_card_str TYPE zprint_card_str.
+  DATA i_pc TYPE zz_pc . "@DT20130724 -zpc
+  DATA : gross_weight TYPE menge_d,
+         net_weight   TYPE menge_d.
+  DATA zcard_no TYPE zcard_no.
+
+*  break dtablalis.
+  CLEAR zprint_card_str.
+  CLEAR i_pc.
+  MOVE i_pcs_ok TO i_pc.
+  CLEAR : gross_weight, net_weight.
+  MOVE i_gross_weight TO gross_weight.
+  MOVE i_net_weight TO net_weight.
+  MOVE i_zcard TO zcard_no.
+
+  CALL FUNCTION 'ZPRINT_CARD'
+    EXPORTING
+      i_aufnr              = i_aufnr
+      i_budat              = i_budat
+      i_card               = 'PACKED'
+      i_wagon_no           = i_wagon
+      i_hu_no              = i_exidv
+      i_card_no            = zcard_no "+DT
+      screen               = 'X'
+      i_arbpl              = i_arbpl
+      i_length             = prod_length
+      i_pc                 = i_pc
+      i_color              = prod_colour_so
+*     I_BATCH_NO           =
+      i_personnel_group_no = i_zshift_g
+*     i_personnel_number   = i_pernr
+*     I_AUFNR_NEXT         =
+      i_scrap_mf           = i_scrap_pieces
+      i_scrap_col          = i_scrap_pieces
+      i_gross_weight       = gross_weight
+      i_net_weight         = net_weight
+    IMPORTING
+      zprint_card_str      = zprint_card_str.
+
+
+  SELECT SINGLE stlbez FROM afko INTO number_po WHERE aufnr = i_aufnr.
+
+
+
+  IF ( kdauf+2(2) = '41' ).
+    zprint_card_str-e_so_type = 'EXT'.
+  ELSEIF ( I_TDLINE is NOT INITIAL ).
+      zprint_card_str-e_so_type = I_TDLINE.
+      ELSE.
+        zprint_card_str-e_so_type = 'SUB'.
+*    'SUB'.
+  ENDIF.
+
+  CLEAR zprint_card_str-e_kdauf_41_42.
+  IF ( kdauf+2(2) = '41' ) OR ( kdauf+2(2) = '42' ).
+    MOVE kdauf TO zprint_card_str-e_kdauf_41_42.
+    IF zprint_card_str-e_customer_pr_num IS INITIAL.   "@se20200226
+      zprint_card_str-e_customer_pr_num = customer_pr_num.
+
+    ENDIF.
+
+  ENDIF.
+
+*
+*  IF ( kdauf+2(2) = '42' ).
+*    zprint_card_str-e_customer_pr_num = customer_pr_num.
+*    ENDIF.
+
+
+
+*  lv_formname = 'ZETEM_BG_PPR_LAB_CARD_NEW'. "A5 printout
+  lv_formname = 'ZETEM_BG_PPR_LAB_CARD'.
+
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname = lv_formname
+    IMPORTING
+      fm_name  = lv_fmname.
+
+  CLEAR w_output_options.
+
+  w_output_options-tddest = 'LBG1'. "'LOCAL'."s_rldri-ldest.
+*   w_OUTPUT_OPTIONS-TDNOPREV = 'X'.  " No preview
+  w_output_options-tdimmed = 'X'.    " Print Immediately
+  w_output_options-tdnewid = 'X'.    " New Spool Request
+  w_output_options-tdfinal = 'X'.    " End Spool Request
+  w_output_options-tdcopies = '1'.
+
+  CALL FUNCTION lv_fmname
+    EXPORTING
+      control_parameters = w_cparam
+      output_options     = w_output_options
+      user_settings      = ''
+      pprint_card_str    = zprint_card_str
+      nologo             = ' '.
+*      TABLES
+*        RLDRI              = T_RLDRI.
+  .
+
+  CLEAR zbg_print_data.
+
+  zbg_print_data-aufnr = zprint_card_str-e_aufnr.
+  zbg_print_data-arbpl = zprint_card_str-e_arbpl.
+  zbg_print_data-budat = zprint_card_str-e_budat.
+  zbg_print_data-card_no = zprint_card_str-e_card_no.
+  zbg_print_data-wagon_no = zprint_card_str-e_wagon_no.
+  zbg_print_data-hu_no = zprint_card_str-e_hu_no.
+  zbg_print_data-uname = sy-uname.
+  zbg_print_data-datum = sy-datum.
+  zbg_print_data-uzeit = sy-uzeit.
+
+  MODIFY zbg_print_data FROM zbg_print_data.
+
+*@se20191114
+  IF sy-ucomm = 'PRNT'.
+    PERFORM create_hu.
+  ENDIF.
+
+ENDFORM.                    " PRINT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_ZCARD  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_zcard INPUT.
+  DATA zcard_num_ok.
+  DATA zcard_no TYPE zcard_no.
+  IF ( NOT i_zcard IS INITIAL AND
+      NOT i_wagon IS INITIAL )
+    OR sy-ucomm ='CONF'.
+    CLEAR zcard_num_ok.
+    MOVE i_zcard TO zcard_no.
+    CALL FUNCTION 'ZVALIDATE_CARD_NO'
+      EXPORTING
+        aufnr    = i_aufnr
+        card_no  = zcard_no
+        wagon_no = i_wagon
+      IMPORTING
+        ok       = zcard_num_ok.
+    IF zcard_num_ok <> 'X'.
+      MESSAGE text-024 TYPE 'W'.
+    ENDIF.
+
+  ENDIF.
+
+
+
+ENDMODULE.                 " CHECK_ZCARD  INPUT
+*&---------------------------------------------------------------------*
+*&      Form  PRINT_NOLOGO
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM print_nologo .
+*============- smartform =======================
+  DATA   : gs_rldri TYPE rldri.
+  DATA   : t_rldri  TYPE TABLE OF rldri.
+
+  DATA : lv_fmname   TYPE rs38l_fnam,
+         w_cparam    TYPE ssfctrlop,
+         lv_formname TYPE tdsfname.
+  DATA w_output_options TYPE ssfcompop.
+
+  DATA zprint_card_str TYPE zprint_card_str.
+  DATA i_pc TYPE zz_pc . "@DT20130724 -zpc
+  DATA : gross_weight TYPE menge_d,
+         net_weight   TYPE menge_d.
+  DATA zcard_no TYPE zcard_no.
+
+  break dtablalis.
+  CLEAR zprint_card_str.
+  CLEAR i_pc.
+  MOVE i_pcs_ok TO i_pc.
+  CLEAR : gross_weight, net_weight.
+  MOVE i_gross_weight TO gross_weight.
+  MOVE i_net_weight TO net_weight.
+  MOVE i_zcard TO zcard_no.
+
+  CALL FUNCTION 'ZPRINT_CARD'
+    EXPORTING
+      i_aufnr              = i_aufnr
+      i_budat              = i_budat
+      i_card               = 'PACKED'
+      i_wagon_no           = i_wagon
+      i_hu_no              = i_exidv
+      i_card_no            = zcard_no "+DT
+      screen               = 'X'
+      i_arbpl              = i_arbpl
+      i_length             = prod_length
+      i_pc                 = i_pc
+      i_color              = prod_colour_so
+*     I_BATCH_NO           =
+      i_personnel_group_no = i_zshift_g
+*     i_personnel_number   = i_pernr
+*     I_AUFNR_NEXT         =
+      i_scrap_mf           = i_scrap_pieces
+      i_scrap_col          = i_scrap_pieces
+      i_gross_weight       = gross_weight
+      i_net_weight         = net_weight
+    IMPORTING
+      zprint_card_str      = zprint_card_str.
+
+  IF ( kdauf+2(2) = '41' ).
+    zprint_card_str-e_so_type = 'SUB'.
+  ELSE.
+    zprint_card_str-e_so_type = 'EXT'.
+  ENDIF.
+
+  CLEAR zprint_card_str-e_kdauf_41_42.
+  IF ( kdauf+2(2) = '41' ) OR ( kdauf+2(2) = '42' ).
+    MOVE kdauf TO zprint_card_str-e_kdauf_41_42.
+    IF zprint_card_str-e_customer_pr_num IS INITIAL.   "@se20200226
+      zprint_card_str-e_customer_pr_num = customer_pr_num.
+    ENDIF.
+  ENDIF.
+
+*  lv_formname = 'ZETEM_BG_PPR_LAB_CARD_NEW'.
+  lv_formname = 'ZETEM_BG_PPR_LAB_CARD'.
+
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname = lv_formname
+    IMPORTING
+      fm_name  = lv_fmname.
+
+  CLEAR w_output_options.
+  w_output_options-tddest = 'LOCAL'."s_rldri-ldest.
+*   w_OUTPUT_OPTIONS-TDNOPREV = 'X'.  " No preview
+  w_output_options-tdimmed = 'X'.    " Print Immediately
+  w_output_options-tdnewid = 'X'.    " New Spool Request
+  w_output_options-tdfinal = 'X'.    " End Spool Request
+  w_output_options-tdcopies = '1'.
+
+  CALL FUNCTION lv_fmname
+    EXPORTING
+      control_parameters = w_cparam
+      output_options     = w_output_options
+      user_settings      = ''
+      pprint_card_str    = zprint_card_str
+      nologo             = 'X'
+*      TABLES
+*     RLDRI              = T_RLDRI.
+    .
+
+  CLEAR zbg_print_data.
+
+  zbg_print_data-aufnr = zprint_card_str-e_aufnr.
+  zbg_print_data-arbpl = zprint_card_str-e_arbpl.
+  zbg_print_data-budat = zprint_card_str-e_budat.
+  zbg_print_data-card_no = zprint_card_str-e_card_no.
+  zbg_print_data-wagon_no = zprint_card_str-e_wagon_no.
+  zbg_print_data-hu_no = zprint_card_str-e_hu_no.
+  zbg_print_data-uname = sy-uname.
+  zbg_print_data-datum = sy-datum.
+  zbg_print_data-uzeit = sy-uzeit.
+
+  MODIFY zbg_print_data FROM zbg_print_data.
+
+*@se20191114
+  IF sy-ucomm = 'PRNT'.
+    PERFORM create_hu.
+  ENDIF.
+
+ENDFORM.                    " PRINT_NOLOGO
+*&---------------------------------------------------------------------*
+*&      Module  UPD_UNSTOCK  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE upd_unstock INPUT.
+  IF i_un = 'X' AND sy-ucomm ='CONF'.
+    un1 = 'X'.
+  ENDIF.
+
+
+ENDMODULE.                 " UPD_UNSTOCK  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  UPD2_UNSTOCK  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE upd2_unstock INPUT.
+
+  IF ( NOT i_add_pcs_ok IS INITIAL )
+         AND sy-ucomm ='CONF'.
+    un2 = 'X'.
+  ENDIF.
+
+ENDMODULE.                 " UPD2_UNSTOCK  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_HU  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_hu INPUT.
+*-20150219 Comment by DT after request from VVangelov
+** check i_exidv is not initial.
+** clear zconf_other.
+** select single * from zconf_other where zhu = i_exidv.
+** if sy-subrc = 0.
+**   message e398(00) with text-e04.
+** endif.
+
+
+
+ENDMODULE.                 " CHECK_HU  INPUT
+*&---------------------------------------------------------------------*
+*&      Form  OPEN_FILE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM open_file .
+  DATA: finfile TYPE string.
+
+  CLEAR zprnum.
+  SELECT SINGLE zprnum FROM mara
+                      INTO zprnum
+                      WHERE matnr = prod_matnr.
+  CHECK NOT zprnum IS INITIAL.
+
+  CLEAR wa_packg.
+  SELECT SINGLE * FROM zpackg INTO wa_packg
+                 WHERE zprofil = zprnum.
+  CHECK NOT wa_packg-filename IS INITIAL.
+
+  MOVE wa_packg-filename TO finfile .
+
+  CALL METHOD cl_gui_frontend_services=>execute
+    EXPORTING
+      document       = finfile
+    EXCEPTIONS
+*     CNTL_ERROR     = 1
+*     ERROR_NO_GUI   = 2
+*     BAD_PARAMETER  = 3
+      file_not_found = 4
+*     PATH_NOT_FOUND = 5
+*     FILE_EXTENSION_UNKNOWN = 6
+*     ERROR_EXECUTE_FAILED   = 7
+*     SYNCHRONOUS_FAILED     = 8
+*     NOT_SUPPORTED_BY_GUI   = 9
+*     OTHERS         = 10
+    .
+
+
+
+ENDFORM.                    " OPEN_FILE
+
+INCLUDE zetem_packaging_get_perdataf01.
+*&---------------------------------------------------------------------*
+*&      Module  CHECK_MATNRBMW  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE check_matnrbmw INPUT.
+  DATA: autom TYPE c.
+  CLEAR autom.
+  CALL FUNCTION 'ZCHECK_MATNR'
+    EXPORTING
+      matnr = prod_matnr
+    IMPORTING
+      aut   = autom.
+  IF autom IS INITIAL AND i_bmwnum = 'X'.
+    MESSAGE w398(00) WITH text-t09.
+  ENDIF.
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0400  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0400 INPUT.
+
+  ok_code = sy-ucomm.
+  CLEAR sy-ucomm.
+  CASE ok_code.
+    WHEN 'OK400'.
+**      clear: i_pcs_mf_scrap, i_pcs_col_scrap.
+      LOOP AT tab_scrap INTO wa_scrap.
+        IF sy-tabix = 1. CLEAR i_scrap_pieces. ENDIF.
+        i_scrap_pieces = i_scrap_pieces + wa_scrap-scrap_pc.
+      ENDLOOP.
+      LEAVE TO SCREEN 0.
+    WHEN 'CANC400'.
+**      clear tab_scrap.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+
+
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Form  FILL_TABSCRAP
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM fill_tabscrap .
+  DATA: i_scrap_r TYPE zscrap_reason_b OCCURS 0 WITH HEADER LINE.
+  IF mf_tab_scrap[] IS INITIAL.
+    CLEAR : i_scrap_r, i_scrap_r[].
+    SELECT * FROM zscrap_reason_b
+                      INTO TABLE i_scrap_r
+                      WHERE zz_type = 'PACKAGING'
+                        AND hide = ''
+                        AND spras = sy-langu
+                      ORDER BY sort_no ASCENDING.
+    LOOP AT i_scrap_r.
+      CLEAR wa_scrap.
+      wa_scrap-scrap_code = i_scrap_r-grund.
+      wa_scrap-scrap_descr = i_scrap_r-grund_t.
+      APPEND wa_scrap TO mf_tab_scrap.
+    ENDLOOP.
+  ENDIF.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SAVE_SCRAP_FILE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM save_scrap_file .
+* MF scrap
+  LOOP AT mf_tab_scrap INTO wa_scrap.
+    CHECK wa_scrap-scrap_pc > 0.
+    CHECK NOT detail_return-conf_no IS INITIAL.
+    MOVE detail_return-conf_no TO wa_scrap-rueck.
+    MOVE detail_return-conf_cnt TO wa_scrap-rmzhl.
+    MODIFY zaddtr_scrap FROM wa_scrap.
+  ENDLOOP.
+  CLEAR mf_tab_scrap.
+* COLOR scrap
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  PRINT_SCRAP
+*&---------------------------------------------------------------------*
+*       text "function not used"
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM print_scrap .
+
+*============- smartform =======================
+  DATA   : gs_rldri TYPE rldri.
+  DATA   : t_rldri  TYPE TABLE OF rldri.
+
+  DATA : lv_fmname   TYPE rs38l_fnam,
+         w_cparam    TYPE ssfctrlop,
+         lv_formname TYPE tdsfname.
+  DATA w_output_options TYPE ssfcompop.
+
+  DATA zprint_card_str TYPE zprint_card_str.
+  DATA i_pc TYPE zz_pc . "@DT20130724 -zpc
+  DATA : gross_weight TYPE menge_d,
+         net_weight   TYPE menge_d,
+         wa_werks     LIKE afpo-dwerk.
+
+  DATA zcard_no TYPE zcard_no.
+
+*  break dtablalis.
+  CLEAR zprint_card_str.
+  CLEAR i_pc.
+  MOVE i_pcs_ok TO i_pc.
+  CLEAR : gross_weight, net_weight.
+  MOVE i_gross_weight TO gross_weight.
+  MOVE i_net_weight TO net_weight.
+  MOVE i_zcard TO zcard_no.
+
+  CALL FUNCTION 'ZPRINT_CARD'
+    EXPORTING
+      i_aufnr              = i_aufnr
+      i_budat              = i_budat
+      i_card               = 'PACKED'
+      i_wagon_no           = i_wagon
+      i_hu_no              = i_exidv
+      i_card_no            = zcard_no "+DT
+      screen               = 'X'
+      i_arbpl              = i_arbpl
+      i_length             = prod_length
+      i_pc                 = i_pc
+      i_color              = prod_colour_so
+*     I_BATCH_NO           =
+      i_personnel_group_no = i_zshift_g
+*     i_personnel_number   = i_pernr
+*     I_AUFNR_NEXT         =
+      i_scrap_mf           = i_scrap_pieces
+      i_scrap_col          = i_scrap_pieces
+      i_gross_weight       = gross_weight
+      i_net_weight         = net_weight
+    IMPORTING
+      zprint_card_str      = zprint_card_str.
+
+  IF ( kdauf+2(2) = '41' ).
+    zprint_card_str-e_so_type = 'SUB'.
+  ELSE.
+    zprint_card_str-e_so_type = 'EXT'.
+  ENDIF.
+
+  CLEAR zprint_card_str-e_kdauf_41_42.
+  IF ( kdauf+2(2) = '41' ) OR ( kdauf+2(2) = '42' ).
+    MOVE kdauf TO zprint_card_str-e_kdauf_41_42.
+  ENDIF.
+
+  IF zprint_card_str-e_pc <> 0.
+zprint_card_str-e_gross_weight = ( zprint_card_str-e_scrap_mf * zprint_card_str-e_gross_weight ) / zprint_card_str-e_pc .
+zprint_card_str-e_net_weight   = ( zprint_card_str-e_scrap_mf * zprint_card_str-e_net_weight   ) / zprint_card_str-e_pc .
+  ENDIF.
+
+  zprint_card_str-e_pc = zprint_card_str-e_scrap_mf.
+  zprint_card_str-e_qc_text = 'SCRAP'.
+
+SELECT SINGLE * FROM mara WHERE matnr = zprint_card_str-e_material_number_cons.
+  IF mara-zcolourcategory = 'MF'.
+zprint_card_str-e_material_number_cons = '000000000000230055'.  "No colored
+    IF NOT zprint_card_str-e_hu_no IS INITIAL.
+CONCATENATE 'SM'  zprint_card_str-e_hu_no+2(18) INTO zprint_card_str-e_hu_no.
+    ENDIF.
+  ELSE.
+zprint_card_str-e_material_number_cons = '000000000000230058'.  "Colored
+    IF NOT zprint_card_str-e_hu_no IS INITIAL.
+CONCATENATE 'SC'  zprint_card_str-e_hu_no+2(18) INTO zprint_card_str-e_hu_no.
+    ENDIF.
+  ENDIF.
+
+*  if not zprint_card_str-e_hu_no is initial.     "@se20191114
+*    concatenate 'SC'  zprint_card_str-e_hu_no+2(18) into zprint_card_str-e_hu_no.
+*  endif.
+  zprint_card_str-e_package_no   = zprint_card_str-e_hu_no.
+
+*  lv_formname = 'ZETEM_BG_PPR_LAB_CARD_NEW'. "A5 printout
+  lv_formname = 'ZETEM_BG_PPR_LAB_CARD'.
+
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname = lv_formname
+    IMPORTING
+      fm_name  = lv_fmname.
+
+  CLEAR w_output_options.
+
+  w_output_options-tddest = 'LBG1'. "'LOCAL'."s_rldri-ldest.
+*   w_OUTPUT_OPTIONS-TDNOPREV = 'X'.  " No preview
+  w_output_options-tdimmed = 'X'.    " Print Immediately
+  w_output_options-tdnewid = 'X'.    " New Spool Request
+  w_output_options-tdfinal = 'X'.    " End Spool Request
+  w_output_options-tdcopies = '1'.
+
+  CALL FUNCTION lv_fmname
+    EXPORTING
+      control_parameters = w_cparam
+      output_options     = w_output_options
+      user_settings      = ''
+      pprint_card_str    = zprint_card_str
+      nologo             = ' '.
+*      TABLES
+*        RLDRI              = T_RLDRI.
+  .
+
+  CLEAR zbg_print_data.
+
+  zbg_print_data-aufnr = zprint_card_str-e_aufnr.
+  zbg_print_data-arbpl = zprint_card_str-e_arbpl.
+  zbg_print_data-budat = zprint_card_str-e_budat.
+  zbg_print_data-card_no = zprint_card_str-e_card_no.
+  zbg_print_data-wagon_no = zprint_card_str-e_wagon_no.
+  zbg_print_data-hu_no = zprint_card_str-e_hu_no.
+  zbg_print_data-uname = sy-uname.
+  zbg_print_data-datum = sy-datum.
+  zbg_print_data-uzeit = sy-uzeit.
+
+  MODIFY zbg_print_data FROM zbg_print_data.
+
+* @se20191115
+* When Print:Delete old Hu & create new
+  IF sy-ucomm = 'PRNT'.
+
+* Delete old & Create new HU        @se20191114
+    MOVE zprint_card_str-e_pc TO wa_pcs.
+    MOVE zprint_card_str-e_gross_weight TO gross_weight.
+    MOVE zprint_card_str-e_net_weight TO net_weight.
+
+    CLEAR : wa_lgort, wa_batch, wa_werks.
+SELECT SINGLE lgort charg dwerk FROM afpo INTO ( wa_lgort, wa_batch, wa_werks )
+              WHERE aufnr = i_aufnr.
+
+    CLEAR wa_lgort.
+    IF ( kdauf+2(2) = '42' ).
+      wa_lgort = '2085'.
+    ELSE.
+      wa_lgort = '2108'.
+    ENDIF.
+
+    "Check if HU exists
+    CLEAR vekp.
+    SELECT SINGLE * FROM vekp WHERE exidv = zbg_print_data-hu_no
+                              AND werks = wa_werks
+                              AND lgort = wa_lgort
+                              AND status <> '0060'. "not deleted
+    IF sy-subrc = 0. "exists
+      CALL FUNCTION 'ZRFM_DELHU'
+        EXPORTING
+          i_hu    = zbg_print_data-hu_no
+          i_plant = wa_werks
+          i_lgort = wa_lgort
+*   IMPORTING
+*         E_OK    =
+        .
+      WAIT UP TO 4 SECONDS.
+    ENDIF.
+
+    wa_batch = ' '.
+
+    DATA: ok_hu TYPE flag.
+    "Create new HU
+    CALL FUNCTION 'ZRFM_NEWHU'
+      EXPORTING
+        hu           = zbg_print_data-hu_no
+        plant        = wa_werks
+        lgort        = wa_lgort
+        matnr        = zprint_card_str-e_material_number_cons
+        batch        = wa_batch
+        pak_material = '28000090'
+        kdauf        = kdauf
+        kdpos        = kdpos
+        gross_w      = gross_weight
+        net_w        = net_weight
+        pcs          = wa_pcs
+        mts          = 'X'
+      IMPORTING
+        e_ok         = ok_hu.
+
+    WAIT UP TO 4 SECONDS.
+  ENDIF.
+
+ENDFORM.
+
+
+INCLUDE zetm_scrap_screen400. "Scrap reason screen...
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0500  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0500 OUTPUT.
+  SET PF-STATUS 'ZETEM_PACKAGING_0500'.
+  SET TITLEBAR  'ZETEM_PACKAGING_0500'.
+ENDMODULE.                 " STATUS_0500  OUTPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0500  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0500 INPUT.
+  ok_code = sy-ucomm.
+  CLEAR sy-ucomm.
+  CASE ok_code.
+    WHEN 'OK500'.
+      LEAVE TO SCREEN 0.
+    WHEN 'CANC500'.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+ENDMODULE.             " USER_COMMAND_0500
+*&---------------------------------------------------------------------*
+*&      Form  FILL_TDLINE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM fill_tdline .
+
+  LOOP AT i_lines.
+    CASE sy-tabix.
+      WHEN 1.
+        i_tdline_1 = i_lines.
+      WHEN 2.
+        i_tdline_2 = i_lines.
+      WHEN 3.
+        i_tdline_3 = i_lines.
+      WHEN 4.
+        i_tdline_4 = i_lines.
+      WHEN 5.
+        i_tdline_5 = i_lines.
+      WHEN 6.
+        i_tdline_6 = i_lines.
+      WHEN 7.
+        i_tdline_7 = i_lines.
+      WHEN 8.
+        i_tdline_8 = i_lines.
+      WHEN 9.
+        i_tdline_9 = i_lines.
+      WHEN 10.
+        i_tdline_10 = i_lines.
+    ENDCASE.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_HU
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM create_hu .
+
+  DATA : gross_weight TYPE menge_d,
+         net_weight   TYPE menge_d,
+         wa_exidv(20) TYPE n,
+         wa_werks     LIKE afpo-dwerk.
+
+  CLEAR : gross_weight, net_weight, wa_pcs.
+  MOVE i_gross_weight TO gross_weight.
+  MOVE i_net_weight TO net_weight.
+
+  MOVE i_pcs_ok TO wa_pcs.
+
+  CLEAR : wa_lgort, wa_batch, wa_werks.
+SELECT SINGLE lgort charg dwerk FROM afpo INTO ( wa_lgort, wa_batch, wa_werks )
+            WHERE aufnr = i_aufnr.
+
+  "Check if HU exists
+  MOVE i_exidv TO wa_exidv.
+
+  IF ( kdauf+2(2) = '42' ).
+    CLEAR wa_lgort.
+    wa_lgort = '2085'.
+  ENDIF.
+
+  CLEAR vekp.
+  SELECT SINGLE * FROM vekp WHERE exidv = wa_exidv
+                            AND werks = wa_werks
+                            AND lgort = wa_lgort
+                            AND status <> '0060'. "not deleted
+  IF sy-subrc = 0. "exists
+    CALL FUNCTION 'ZRFM_DELHU'
+      EXPORTING
+        i_hu    = i_exidv
+        i_plant = wa_werks
+        i_lgort = wa_lgort
+*     IMPORTING
+*       E_OK    =
+      .
+    WAIT UP TO 4 SECONDS.
+  ENDIF.
+
+  DATA: ok_hu TYPE flag.
+  "Create new HU
+  CALL FUNCTION 'ZRFM_NEWHU'
+    EXPORTING
+      hu      = i_exidv
+      plant   = wa_werks
+      lgort   = wa_lgort
+      matnr   = prod_matnr
+      batch   = wa_batch
+*     PAK_MATERIAL       = '28000090'
+      kdauf   = kdauf
+      kdpos   = kdpos
+      gross_w = gross_weight
+      net_w   = net_weight
+      pcs     = wa_pcs
+*     MTS     = 'X'
+    IMPORTING
+      e_ok    = ok_hu.
+
+  WAIT UP TO 4 SECONDS.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_HU_SCRAP
+*&---------------------------------------------------------------------*
+*       text  @SE20200218
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM create_hu_scrap USING wa_scrap_exidv
+                           wa_material_number_cons.
+
+  DATA : gross_weight    TYPE menge_d,
+         net_weight      TYPE menge_d,
+         wa_werks        LIKE afpo-dwerk,
+         i_pc            TYPE zz_pc,
+         wa_gross_weight TYPE menge_d,
+         wa_net_weight   TYPE menge_d.
+
+  DATA zcard_no TYPE zcard_no.
+
+  CLEAR : gross_weight, net_weight,
+          wa_gross_weight, wa_net_weight.
+  CLEAR i_pc.
+
+  MOVE i_pcs_ok TO i_pc.
+  MOVE i_gross_weight TO gross_weight.
+  MOVE i_net_weight TO net_weight.
+  MOVE i_zcard TO zcard_no.
+  MOVE i_scrap_pieces TO wa_pcs.
+
+  IF i_pc <> 0.
+    wa_gross_weight = ( i_scrap_pieces * gross_weight ) / i_pc .
+    wa_net_weight   = ( i_scrap_pieces * net_weight   ) / i_pc .
+  ENDIF.
+
+* At confirmation:Delete old HU & create new HU *
+  CLEAR : wa_lgort, wa_batch, wa_werks.
+SELECT SINGLE lgort charg dwerk FROM afpo INTO ( wa_lgort, wa_batch, wa_werks )
+              WHERE aufnr = i_aufnr.
+
+  CLEAR wa_lgort.
+  IF ( kdauf+2(2) = '42' ).
+    wa_lgort = '2085'.
+  ELSE.
+    wa_lgort = '2108'.
+  ENDIF.
+
+  "Check if HU exists
+  CLEAR vekp.
+  SELECT SINGLE * FROM vekp WHERE exidv = wa_scrap_exidv
+                            AND werks = wa_werks
+                            AND lgort = wa_lgort
+                            AND status <> '0060'. "not deleted
+  IF sy-subrc = 0. "exists
+    CALL FUNCTION 'ZRFM_DELHU'
+      EXPORTING
+        i_hu    = wa_scrap_exidv
+        i_plant = wa_werks
+        i_lgort = wa_lgort
+*   IMPORTING
+*       E_OK    =
+      .
+    WAIT UP TO 4 SECONDS.
+  ENDIF.
+
+  wa_batch = ' '.
+
+  DATA: ok_hu TYPE flag.
+  "Create new HU
+  CALL FUNCTION 'ZRFM_NEWHU'
+    EXPORTING
+      hu           = wa_scrap_exidv
+      plant        = wa_werks
+      lgort        = wa_lgort
+      matnr        = wa_material_number_cons
+      batch        = wa_batch
+      pak_material = '28000090'
+      kdauf        = kdauf
+      kdpos        = kdpos
+      gross_w      = wa_gross_weight
+      net_w        = wa_net_weight
+      pcs          = wa_pcs
+      mts          = 'X'
+    IMPORTING
+      e_ok         = ok_hu.
+
+  WAIT UP TO 4 SECONDS.
+
+ENDFORM.    " end of create_hu_scrap
+*&---------------------------------------------------------------------*
+*&      Form  DSP_TABSTOCK
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM dsp_tabstock .
+
+  DATA : quantity TYPE menge_d,
+         unity    TYPE meins.
+
+  CLEAR : stock_itab, stock_itab[], scrap_tb, scrap_tb[], dsp_stock_flag,
+          i_ord_stock, i_ord_stock[]..
+
+  quantity = i_pcs_ok + i_scrap_pieces.
+
+  CHECK quantity IS NOT INITIAL.
+
+  unity    = 'ST'.
+  CALL FUNCTION 'ZETM_ORDER_STOCK'
+    EXPORTING
+      aufnr          = i_aufnr
+      quantity       = quantity
+      unit           = unity
+    TABLES
+      stock          = i_ord_stock
+      scrap_tb       = scrap_tb.
+  .
+
+  IF i_ord_stock[] IS NOT INITIAL.
+
+    MOVE-CORRESPONDING i_ord_stock TO stock_itab.
+
+    IF stock_itab-bdmng < stock_itab-cmbwbest.
+       stock_itab-flag = icon_ok.
+    ELSEIF ( stock_itab-bdmng > stock_itab-cmbwbest ) AND ( stock_itab-cmbwbest > 0 ).
+       stock_itab-flag = icon_warn.
+    ELSEIF stock_itab-cmbwbest = 0.
+       stock_itab-flag = icon_error.
+    ENDIF.
+
+    APPEND stock_itab.
+    MOVE-CORRESPONDING stock_itab TO wa_st_tab.
+
+    CALL SCREEN 1050 STARTING AT 5 2
+                         ENDING AT 170 25.
+
+    dsp_stock_flag = 'X'.
+  ENDIF .
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_1050  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_1050 INPUT.
+  DATA: ok_cod LIKE sy-ucomm.
+
+  ok_cod = sy-ucomm.
+  CLEAR sy-ucomm.
+  CASE ok_cod.
+    WHEN 'OK'.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+
+ENDMODULE.                 " USER_COMMAND_1050  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_1050  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_1050 OUTPUT.
+  SET PF-STATUS 'STATUS_1050'.
+  SET TITLEBAR 'ZETEM_TITLE_1050'.
+
+ENDMODULE.                 " STATUS_1050  OUTPUT
+
+*&SPWIZARD: DECLARATION OF TABLECONTROL 'SCREEN_1050' ITSELF
+CONTROLS: SCREEN_1050 TYPE TABLEVIEW USING SCREEN 1050.
+
+*&SPWIZARD: LINES OF TABLECONTROL 'SCREEN_1050'
+DATA:     G_SCREEN_1050_LINES  LIKE SY-LOOPC.
+
+*&SPWIZARD: OUTPUT MODULE FOR TC 'SCREEN_1050'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: UPDATE LINES FOR EQUIVALENT SCROLLBAR
+MODULE SCREEN_1050_CHANGE_TC_ATTR OUTPUT.
+  DESCRIBE TABLE STOCK_ITAB LINES SCREEN_1050-lines.
+ENDMODULE.
+
+*&SPWIZARD: OUTPUT MODULE FOR TC 'SCREEN_1050'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: GET LINES OF TABLECONTROL
+MODULE SCREEN_1050_GET_LINES OUTPUT.
+  G_SCREEN_1050_LINES = SY-LOOPC.
+ENDMODULE.
+
+*&SPWIZARD: INPUT MODULE FOR TC 'SCREEN_1050'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: PROCESS USER COMMAND
+MODULE SCREEN_1050_USER_COMMAND INPUT.
+  OK_CODE = SY-UCOMM.
+  PERFORM USER_OK_TC USING    'SCREEN_1050'
+                              'STOCK_ITAB'
+                              ' '
+                     CHANGING OK_CODE.
+  SY-UCOMM = OK_CODE.
+ENDMODULE.
